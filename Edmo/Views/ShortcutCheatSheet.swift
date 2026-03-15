@@ -15,6 +15,7 @@ struct ShortcutCheatSheet: View {
                 shortcutRow("⌘3", "PRDs")
                 Divider().gridCellUnsizedAxes(.horizontal)
                 shortcutRow("⌘K", "Command Palette")
+                shortcutRow("⌘P", "Switch Projects")
                 shortcutRow("⌘N", "New PRD")
                 shortcutRow("⌘R", "Refresh")
                 shortcutRow("⌘,", "Settings")

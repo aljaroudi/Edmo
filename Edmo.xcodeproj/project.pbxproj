@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9D0B8E532FC3BE9600A3F101 /* Textual in Frameworks */ = {isa = PBXBuildFile; productRef = 9D0B8E522FC3BE9600A3F101 /* Textual */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		15DB39492F6627660066289B /* Edmo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Edmo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9D0B8E532FC3BE9600A3F101 /* Textual in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = Edmo;
 			packageProductDependencies = (
+				9D0B8E522FC3BE9600A3F101 /* Textual */,
 			);
 			productName = Edmo;
 			productReference = 15DB39492F6627660066289B /* Edmo.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = 15DB39402F6627660066289B;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9D0B8E512FC3BE9600A3F101 /* XCRemoteSwiftPackageReference "textual" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 15DB394A2F6627660066289B /* Products */;
 			projectDirPath = "";
@@ -331,6 +340,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9D0B8E512FC3BE9600A3F101 /* XCRemoteSwiftPackageReference "textual" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/textual";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9D0B8E522FC3BE9600A3F101 /* Textual */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9D0B8E512FC3BE9600A3F101 /* XCRemoteSwiftPackageReference "textual" */;
+			productName = Textual;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 15DB39412F6627660066289B /* Project object */;
 }

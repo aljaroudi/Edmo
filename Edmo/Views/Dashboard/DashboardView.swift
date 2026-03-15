@@ -28,7 +28,7 @@ struct DashboardView: View {
             Text("Open a project folder to get started.")
                 .foregroundStyle(.secondary)
             Button("Open Project...") {
-                openProject()
+                state.promptForProject()
             }
             .buttonStyle(.borderedProminent)
         }
@@ -59,17 +59,6 @@ struct DashboardView: View {
                     progress: ts.progress
                 )
             }
-        }
-    }
-
-    private func openProject() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.message = "Choose a project folder"
-        if panel.runModal() == .OK, let url = panel.url {
-            state.openProject(path: url.path)
         }
     }
 }

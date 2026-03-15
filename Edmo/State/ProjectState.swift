@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -26,6 +27,34 @@ enum ProjectTab: String, CaseIterable, Hashable {
     }
 }
 
+enum CommandPaletteMode {
+    case commands
+    case projects
+
+    var placeholder: String {
+        switch self {
+        case .commands:
+            "Search commands..."
+        case .projects:
+            "Search projects..."
+        }
+    }
+
+    var emptyStateMessage: String {
+        switch self {
+        case .commands:
+            "No matching commands"
+        case .projects:
+            "No matching projects"
+        }
+    }
+}
+
+private struct ToolDetectionResult {
+    let tools: [CLITool]
+    let ghAvailable: Bool
+}
+
 @Observable
 final class ProjectState {
     private static let projectsKey = "edmo.recentProjects"
@@ -45,14 +74,19 @@ final class ProjectState {
     var selectedTab: ProjectTab = .dashboard
     var isLoading: Bool = false
     var errorMessage: String?
+    var commandPaletteMode: CommandPaletteMode = .commands
     var showCommandPalette: Bool = false
     var showNewPRDSheet: Bool = false
     var showShortcutHelp: Bool = false
     var selectedStoryID: String?
+    var projectTransitionName: String?
 
     private var fileWatcher: FileWatcher?
+    private var activeProjectTransitionID: UUID?
+    private var projectLoadTask: Task<Void, Never>?
 
     var hasProject: Bool { projectPath != nil }
+    var isProjectSwitching: Bool { projectTransitionName != nil }
 
     init() {
         loadProjects()
@@ -71,31 +105,34 @@ final class ProjectState {
         UserDefaults.standard.set(data, forKey: Self.projectsKey)
     }
 
-    func openProject(path: String) {
-        // Upsert into project list
-        if let idx = projects.firstIndex(where: { $0.path == path }) {
-            currentProject = projects[idx]
-        } else {
-            let info = ProjectInfo(path: path)
-            projects.append(info)
-            currentProject = info
-            saveProjects()
-        }
+    func openCommandPalette(mode: CommandPaletteMode) {
+        commandPaletteMode = mode
+        showCommandPalette = true
+    }
 
-        projectPath = path
-        selectedDestination = .dashboard
-        loadConfig()
-        startWatching()
-        Task {
-            await detectTools()
-            await refreshAll()
+    func promptForProject() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a project folder"
+        if panel.runModal() == .OK, let url = panel.url {
+            openProject(path: url.path)
         }
+    }
+
+    func openProject(path: String) {
+        startProjectSwitch(to: upsertProject(path: path))
     }
 
     func removeProject(id: UUID) {
         projects.removeAll { $0.id == id }
         saveProjects()
         if currentProject?.id == id {
+            projectLoadTask?.cancel()
+            projectLoadTask = nil
+            activeProjectTransitionID = nil
+            projectTransitionName = nil
             currentProject = nil
             projectPath = nil
             stopWatching()
@@ -106,20 +143,11 @@ final class ProjectState {
     }
 
     func detectTools() async {
-        let tools = await CLIDetector.detectTools()
-        let gh = await CLIDetector.isGHAvailable()
-        detectedCLITools = tools
-        ghAvailable = gh
+        let toolDetection = await Self.detectToolState()
+        detectedCLITools = toolDetection.tools
+        ghAvailable = toolDetection.ghAvailable
         if selectedCLI == nil {
             selectedCLI = detectedCLITools.first
-        }
-    }
-
-    func loadConfig() {
-        guard let path = projectPath else { return }
-        if let config = EdmoConfigService.load(from: path) {
-            if let cli = config.defaultCLI { selectedCLI = cli }
-            if let term = config.terminalApp { selectedTerminal = term }
         }
     }
 
@@ -130,51 +158,55 @@ final class ProjectState {
     }
 
     func refreshAll() async {
+        guard !isProjectSwitching else { return }
         refreshPRDs()
         refreshTasks()
         await refreshIssues()
     }
 
     func refreshIssues() async {
-        guard let path = projectPath, ghAvailable else { return }
+        guard !isProjectSwitching else { return }
+        guard let path = projectPath else {
+            issues = []
+            return
+        }
+        guard ghAvailable else {
+            issues = []
+            return
+        }
+
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if projectPath == path {
+                isLoading = false
+            }
+        }
+
         do {
-            issues = try await GitHubService.fetchIssues(at: path)
+            let fetchedIssues = try await GitHubService.fetchIssues(at: path)
+            guard projectPath == path, !isProjectSwitching else { return }
+            issues = fetchedIssues
             errorMessage = nil
         } catch {
+            guard projectPath == path, !isProjectSwitching else { return }
             errorMessage = error.localizedDescription
         }
     }
 
     func refreshPRDs() {
-        guard let path = projectPath else { return }
-        let prdDir = URL(fileURLWithPath: path).appendingPathComponent(".edmo/prd")
-        guard FileManager.default.fileExists(atPath: prdDir.path) else {
+        guard let path = projectPath else {
             prds = []
             return
         }
-        do {
-            let files = try FileManager.default.contentsOfDirectory(at: prdDir, includingPropertiesForKeys: nil)
-                .filter { $0.pathExtension == "md" }
-                .sorted { $0.lastPathComponent < $1.lastPathComponent }
-            prds = files.compactMap { url -> PRDFile? in
-                do {
-                    return try PRDFile(url: url)
-                } catch {
-                    print("[ProjectState] Failed to load PRD \(url.lastPathComponent): \(error)")
-                    return nil
-                }
-            }
-        } catch {
-            prds = []
-        }
+        prds = Self.loadPRDs(at: path)
     }
 
     func refreshTasks() {
-        guard let path = projectPath else { return }
-        let edmoDir = URL(fileURLWithPath: path).appendingPathComponent(".edmo")
-        taskSets = TaskFileService.scanTaskSets(at: edmoDir)
+        guard let path = projectPath else {
+            taskSets = []
+            return
+        }
+        taskSets = Self.loadTaskSets(at: path)
     }
 
     func startWatching() {
@@ -269,5 +301,108 @@ final class ProjectState {
             .appendingPathComponent(".edmo/tasks/\(taskSet.slug).json")
         try? FileManager.default.removeItem(at: url)
         refreshTasks()
+    }
+
+    private func upsertProject(path: String) -> ProjectInfo {
+        if let idx = projects.firstIndex(where: { $0.path == path }) {
+            return projects[idx]
+        }
+
+        let info = ProjectInfo(path: path)
+        projects.append(info)
+        saveProjects()
+        return info
+    }
+
+    private func startProjectSwitch(to project: ProjectInfo) {
+        projectLoadTask?.cancel()
+
+        let requestID = UUID()
+        activeProjectTransitionID = requestID
+        projectTransitionName = project.displayName
+        currentProject = project
+        projectPath = project.path
+        selectedDestination = .dashboard
+        errorMessage = nil
+        issues = []
+        prds = []
+        taskSets = []
+        detectedCLITools = []
+        ghAvailable = false
+        selectedCLI = nil
+        selectedTerminal = .terminal
+        stopWatching()
+
+        let projectPath = project.path
+        projectLoadTask = Task { [weak self] in
+            guard let self else { return }
+
+            let config = EdmoConfigService.load(from: projectPath)
+            let toolDetection = await Self.detectToolState()
+            let loadedPRDs = Self.loadPRDs(at: projectPath)
+            let loadedTaskSets = Self.loadTaskSets(at: projectPath)
+
+            var loadedIssues: [Issue] = []
+            var issueError: String?
+            if toolDetection.ghAvailable {
+                do {
+                    loadedIssues = try await GitHubService.fetchIssues(at: projectPath)
+                } catch {
+                    issueError = error.localizedDescription
+                }
+            }
+
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard self.activeProjectTransitionID == requestID else { return }
+
+                self.detectedCLITools = toolDetection.tools
+                self.ghAvailable = toolDetection.ghAvailable
+                self.selectedCLI = config?.defaultCLI ?? toolDetection.tools.first
+                self.selectedTerminal = config?.terminalApp ?? .terminal
+                self.prds = loadedPRDs
+                self.taskSets = loadedTaskSets
+                self.issues = loadedIssues
+                self.errorMessage = issueError
+                self.startWatching()
+                self.projectLoadTask = nil
+                self.activeProjectTransitionID = nil
+                self.projectTransitionName = nil
+            }
+        }
+    }
+
+    private static func detectToolState() async -> ToolDetectionResult {
+        async let tools = CLIDetector.detectTools()
+        async let ghAvailable = CLIDetector.isGHAvailable()
+        return await ToolDetectionResult(tools: tools, ghAvailable: ghAvailable)
+    }
+
+    private static func loadPRDs(at path: String) -> [PRDFile] {
+        let prdDir = URL(fileURLWithPath: path).appendingPathComponent(".edmo/prd")
+        guard FileManager.default.fileExists(atPath: prdDir.path) else { return [] }
+
+        do {
+            let files = try FileManager.default.contentsOfDirectory(at: prdDir, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "md" }
+                .sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+            return files.compactMap { url -> PRDFile? in
+                do {
+                    return try PRDFile(url: url)
+                } catch {
+                    print("[ProjectState] Failed to load PRD \(url.lastPathComponent): \(error)")
+                    return nil
+                }
+            }
+        } catch {
+            return []
+        }
+    }
+
+    private static func loadTaskSets(at path: String) -> [TaskSet] {
+        let edmoDir = URL(fileURLWithPath: path).appendingPathComponent(".edmo")
+        return TaskFileService.scanTaskSets(at: edmoDir)
     }
 }

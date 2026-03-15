@@ -17,7 +17,7 @@ struct ContentView: View {
             ShortcutCheatSheet()
         }
         .sheet(isPresented: $state.showCommandPalette) {
-            CommandPaletteView(state: state)
+            CommandPaletteView(state: state, mode: state.commandPaletteMode)
         }
         .task {
             await state.detectTools()
@@ -47,8 +47,10 @@ struct ContentView: View {
                     .keyboardShortcut("3")
                 Button("") { state.selectedTab = .settings }
                     .keyboardShortcut(",")
-                Button("") { state.showCommandPalette.toggle() }
+                Button("") { state.openCommandPalette(mode: .commands) }
                     .keyboardShortcut("k")
+                Button("") { state.openCommandPalette(mode: .projects) }
+                    .keyboardShortcut("p")
                 Button("") { state.showNewPRDSheet = true }
                     .keyboardShortcut("n")
                 Button("") { state.showShortcutHelp = true }
@@ -59,10 +61,31 @@ struct ContentView: View {
             .hidden()
         }
         .overlay {
-            if state.isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding()
+            if state.isProjectSwitching {
+                ZStack {
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .ignoresSafeArea()
+
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .controlSize(.large)
+                        Text("Switching Projects")
+                            .font(.headline)
+                        if let projectName = state.projectTransitionName {
+                            Text(projectName)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 24)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(.quaternary)
+                    )
+                    .shadow(radius: 20)
+                }
             }
         }
         .overlay(alignment: .bottom) {
@@ -84,8 +107,7 @@ struct ContentView: View {
     private var projectDetailView: some View {
         if state.hasProject {
             VStack(spacing: 0) {
-                // Tab bar
-                Picker("Tab", selection: $state.selectedTab) {
+                Picker("", selection: $state.selectedTab) {
                     ForEach(ProjectTab.allCases, id: \.self) { tab in
                         if tab == .settings {
                             Image(systemName: tab.icon)
@@ -96,6 +118,7 @@ struct ContentView: View {
                         }
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
                 .padding(.vertical, 8)

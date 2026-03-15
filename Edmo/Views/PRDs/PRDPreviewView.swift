@@ -1,4 +1,5 @@
 import SwiftUI
+import Textual
 
 struct PRDPreviewView: View {
     let prd: PRDFile
@@ -32,8 +33,9 @@ struct PRDPreviewView: View {
                     .scrollContentBackground(.hidden)
             } else {
                 ScrollView {
-                    Text(renderedMarkdown)
-                        .textSelection(.enabled)
+                    StructuredText(markdown: editableContent)
+                        .textual.structuredTextStyle(.gitHub)
+                        .textual.textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
                 }
@@ -66,23 +68,25 @@ struct PRDPreviewView: View {
                     .buttonStyle(.borderedProminent)
                 }
 
-                Button("Extract Tasks") {
-                    extractTasks()
+                Button(taskActionTitle) {
+                    handleTaskButton()
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.return, modifiers: [.command, .shift])
-                .disabled(state.selectedCLI == nil)
+                .disabled(matchingTaskSet == nil && state.selectedCLI == nil)
             }
         }
     }
 
-    private var renderedMarkdown: AttributedString {
-        do {
-            var options = AttributedString.MarkdownParsingOptions()
-            options.interpretedSyntax = .inlineOnlyPreservingWhitespace
-            return try AttributedString(markdown: prd.content, options: options)
-        } catch {
-            return AttributedString(prd.content)
+    private var taskActionTitle: String {
+        matchingTaskSet == nil ? "Extract Tasks" : "View Tasks"
+    }
+
+    private func handleTaskButton() {
+        if matchingTaskSet == nil {
+            extractTasks()
+        } else {
+            state.selectedTab = .work
         }
     }
 

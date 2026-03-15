@@ -10,7 +10,7 @@ struct SidebarView: View {
                     projectRow(project)
                 }
                 Button {
-                    addProject()
+                    state.promptForProject()
                 } label: {
                     Label("Add Project", systemImage: "plus")
                 }
@@ -46,17 +46,6 @@ struct SidebarView: View {
             Button("Remove from List", role: .destructive) {
                 state.removeProject(id: project.id)
             }
-        }
-    }
-
-    private func addProject() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.message = "Choose a project folder"
-        if panel.runModal() == .OK, let url = panel.url {
-            state.openProject(path: url.path)
         }
     }
 }
