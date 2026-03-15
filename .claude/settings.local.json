@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(ralph-loop:ralph-loop:*)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)"
+    ]
+  }
+}
